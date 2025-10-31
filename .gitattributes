@@ -1,0 +1,8 @@
+# Всегда храним текст в LF внутри репозитория
+* text=auto eol=lf
+
+# (Необязательно) Явно для типичных текстовых файлов:
+*.cs   text eol=lf
+*.json text eol=lf
+*.csproj text eol=lf
+*.sln text eol=lf

@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11123.170 d18.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TgReminderBot", "src\TgReminderBot\TgReminderBot.csproj", "{6D77EACF-CAC4-4E36-9B6E-2F2B817DE0B5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuartzSqliteInit", "src\Tools\QuartzSqliteInit\QuartzSqliteInit.csproj", "{6622FF50-9D76-044E-8F26-60BC5DD3C6D8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6D77EACF-CAC4-4E36-9B6E-2F2B817DE0B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6D77EACF-CAC4-4E36-9B6E-2F2B817DE0B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6D77EACF-CAC4-4E36-9B6E-2F2B817DE0B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6D77EACF-CAC4-4E36-9B6E-2F2B817DE0B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6622FF50-9D76-044E-8F26-60BC5DD3C6D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6622FF50-9D76-044E-8F26-60BC5DD3C6D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6622FF50-9D76-044E-8F26-60BC5DD3C6D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6622FF50-9D76-044E-8F26-60BC5DD3C6D8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8A9E8253-4957-4DA5-A3D0-42DDB7C58930}
+	EndGlobalSection
+EndGlobal

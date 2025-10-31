@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Не тянем файлы из Tools в этот проект -->
+  <ItemGroup>
+    <Compile Remove="Tools\**" />
+    <EmbeddedResource Remove="Tools\**" />
+    <None Remove="Tools\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="appsettings.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Telegram.Bot" Version="22.7.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.8" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="TimeZoneConverter" Version="7.2.0" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
+    <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <PackageReference Include="Polly" Version="8.6.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.8" />
+    <PackageReference Include="Quartz" Version="3.15.1" />
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.15.1" />
+    <PackageReference Include="Quartz.Serialization.SystemTextJson" Version="3.15.1" />
+  </ItemGroup>
+
+  <!-- Официальный DDL Quartz: файл ДОЛЖЕН существовать по этому пути -->
+  <ItemGroup>
+    <Content Include="appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="sql\quartz\tables_sqlite.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Авто-инициализация схемы Quartz на этапе publish -->
+  <Target Name="InitQuartzSchema" AfterTargets="Publish">
+    <PropertyGroup>
+      <QuartzDb>$(PublishDir)data\quartz.db</QuartzDb>
+      <QuartzSql>$(ProjectDir)sql\quartz\tables_sqlite.sql</QuartzSql>
+      <InitProj>$(ProjectDir)..\Tools\QuartzSqliteInit\QuartzSqliteInit.csproj</InitProj>
+    </PropertyGroup>
+    <Message Text="Initializing Quartz schema: $(QuartzDb)" Importance="high" />
+    <Exec Command="dotnet run --no-build --project &quot;$(InitProj)&quot; -- &quot;$(QuartzDb)&quot; &quot;$(QuartzSql)&quot;" />
+  </Target>
+	  <!-- Авто-инициализация схемы Quartz при локальной сборке (Debug) -->
+  <Target Name="InitQuartzSchemaDebug" AfterTargets="Build" Condition="'$(Configuration)'=='Debug'">
+	  <PropertyGroup>
+		<!-- База, с которой работает приложение при F5 -->
+		<QuartzDb>$(TargetDir)data\quartz.db</QuartzDb>
+		<!-- Официальный DDL в репозитории проекта -->
+		<QuartzSql>$(ProjectDir)sql\quartz\tables_sqlite.sql</QuartzSql>
+		<!-- наш маленький CLI-инит -->
+		<InitProj>$(ProjectDir)..\Tools\QuartzSqliteInit\QuartzSqliteInit.csproj</InitProj>
+	  </PropertyGroup>
+
+	  <Message Text="(Debug) Initializing Quartz schema: $(QuartzDb)" Importance="high" />
+	  <Exec Command="dotnet run --no-build --project &quot;$(InitProj)&quot; -- &quot;$(QuartzDb)&quot; &quot;$(QuartzSql)&quot;" />
+  </Target>
+</Project>
