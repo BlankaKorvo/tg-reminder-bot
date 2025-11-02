@@ -1,11 +1,16 @@
+using System.ComponentModel;
 using System.Threading.Tasks;
 using Telegram.Bot;
 using TgReminderBot.Data;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers;
 
+[RequireAll]
+[RequireGroup]
 [Command("/mytz")]
+[Description("Show your current time zone setting.")]
 internal sealed class MyTzHandler : ICommandHandler
 {
     private readonly ITelegramBotClient _bot;

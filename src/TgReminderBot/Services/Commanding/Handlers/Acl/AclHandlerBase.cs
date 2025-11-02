@@ -6,7 +6,7 @@ using TgReminderBot.Services.Commanding.Abstractions;
 
 namespace TgReminderBot.Services.Commanding.Handlers.Acl;
 
-internal abstract class AclHandlerBase : ICommandHandler
+internal abstract class AclHandlerBase : ICommandHandler, IRequireSuperAdmin
 {
     protected readonly ITelegramBotClient Bot;
     protected readonly AppDbContext Db;

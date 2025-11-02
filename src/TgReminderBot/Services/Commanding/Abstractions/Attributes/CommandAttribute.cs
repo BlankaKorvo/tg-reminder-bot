@@ -1,6 +1,6 @@
 using System;
 
-namespace TgReminderBot.Services.Commanding.Abstractions;
+namespace TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
 internal sealed class CommandAttribute : Attribute

@@ -1,13 +1,18 @@
+using System.ComponentModel;
 using System.Threading.Tasks;
 using Telegram.Bot;
 using TgReminderBot.Data;
 using TgReminderBot.Models;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 using TimeZoneConverter;
 
 namespace TgReminderBot.Services.Commanding.Handlers;
 
+[RequireGroup]
+[RequireChatAdmin]
 [Command("/tz")]
+[Description("Set your time zone. Usage: /tz <IANA_zone>")]
 internal sealed class TzHandler : ICommandHandler
 {
     private readonly ITelegramBotClient _bot;

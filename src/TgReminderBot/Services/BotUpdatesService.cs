@@ -13,12 +13,13 @@ public class BotUpdatesService : BackgroundService
     private readonly ITelegramBotClient _bot;
     private readonly ILogger<BotUpdatesService> _log;
     private readonly IServiceProvider _sp;
+    private readonly BotCommandScopesPublisher _publisher;
 
-    public BotUpdatesService(ITelegramBotClient bot, ILogger<BotUpdatesService> log, IServiceProvider sp)
-    {
+    public BotUpdatesService(ITelegramBotClient bot, ILogger<BotUpdatesService> log, IServiceProvider sp, BotCommandScopesPublisher publisher) {
         _bot = bot;
         _log = log;
         _sp = sp;
+        _publisher = publisher;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -41,6 +42,9 @@ public class BotUpdatesService : BackgroundService
             {
                 _log.LogInformation("Msg: type={Type} chat={ChatId} from={UserId} text={Text}",
                     m.Type, m.Chat.Id, m.From?.Id, m.Text);
+
+                if (m.Chat.Type == ChatType.Group || m.Chat.Type == ChatType.Supergroup)
+                    await _publisher.EnsureChatPublishedAsync(m.Chat.Id, ct);
 
                 if (m.Type == MessageType.Text && !string.IsNullOrWhiteSpace(m.Text))
                     await CommandRouter.Dispatch(m, m.Text!, _sp, ct);

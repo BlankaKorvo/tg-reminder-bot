@@ -7,10 +7,15 @@ using Telegram.Bot.Types.Enums;
 using TgReminderBot.Models;
 using TgReminderBot.Services.Commanding.Abstractions;
 using TgReminderBot.Common;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
+using System.ComponentModel;
 
 namespace TgReminderBot.Services.Commanding.Handlers.Acl;
 
+[RequireGroup]
+[RequireSuperAdmin]
 [Command("/acl")]
+[Description("Show current ACL settings.")]
 internal sealed class AclShowHandler : AclHandlerBase
 {
     public AclShowHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }

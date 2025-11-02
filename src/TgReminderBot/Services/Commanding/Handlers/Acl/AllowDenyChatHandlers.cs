@@ -1,12 +1,17 @@
+using System.ComponentModel;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 using TgReminderBot.Models;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.Acl;
 
+[RequireGroup]
+[RequireSuperAdmin]
 [Command("/allowchat")]
+[Description("Allow this chat to use the bot.")]
 internal sealed class AllowChatHandler : AclHandlerBase
 {
     public AllowChatHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
@@ -35,7 +40,10 @@ internal sealed class AllowChatHandler : AclHandlerBase
             cancellationToken: ctx.CancellationToken);
     }
 }
+[RequireGroup]
+[RequireSuperAdmin]
 [Command("/denychat")]
+[Description("Deny this chat to use the bot.")]
 internal sealed class DenyChatHandler : AclHandlerBase
 {
     public DenyChatHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
@@ -64,7 +72,10 @@ internal sealed class DenyChatHandler : AclHandlerBase
             cancellationToken: ctx.CancellationToken);
     }
 }
+[RequireSuperAdmin]
+[RequireGroup]
 [Command("/revokechat")]
+[Description("Revoke allow/deny rules for this chat.")]
 internal sealed class RevokeChatHandler : AclHandlerBase
 {
     public RevokeChatHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }

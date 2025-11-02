@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding;
 
-internal sealed class CommandRegistry
+public sealed class CommandRegistry
 {
     private readonly Dictionary<string, Type> _map;
 

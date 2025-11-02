@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,10 +7,14 @@ using Telegram.Bot.Types.Enums;
 using TgReminderBot.Common;
 using TgReminderBot.Data;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers;
 
+[RequireGroup]
+[RequireChatAdmin]
 [Command("/where")]
+[Description("Show where reminders are stored in this chat.")]
 internal sealed class WhereHandler : ICommandHandler
 {
     private readonly ITelegramBotClient _bot;

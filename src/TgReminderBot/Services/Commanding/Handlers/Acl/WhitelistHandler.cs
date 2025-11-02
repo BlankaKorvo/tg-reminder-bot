@@ -1,25 +1,22 @@
+using System.ComponentModel;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.Acl;
 
+[RequireGroup]
+[RequireSuperAdmin]
 [Command("/whitelist")]
+[Description("Enable or disable whitelist mode.")]
 internal sealed class WhitelistHandler : AclHandlerBase
 {
     public WhitelistHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, TgReminderBot.Models.SuperAdminConfig s) : base(bot, db, s) { }
 
     public override async Task Execute(CommandContext ctx)
     {
-        if (!IsSuper(ctx.UserId))
-        {
-            await Bot.SendMessage(ctx.Message.Chat, "Only superadmin",
-                replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = ctx.Message.MessageId, AllowSendingWithoutReply = true },
-                cancellationToken: ctx.CancellationToken);
-            return;
-        }
-
         var arg = (ctx.Args ?? string.Empty).Trim().ToLowerInvariant();
 
         var opt = await Db.AccessOptions.FirstOrDefaultAsync(x => x.Id == 1, ctx.CancellationToken)

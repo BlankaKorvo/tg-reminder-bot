@@ -46,7 +46,6 @@ builder.Services.AddSingleton<BotIdentity>(sp =>
 // --------------------------------- Суперадмин (DI)
 var superAdminRaw = builder.Configuration["Bot:SuperAdminId"]
                    ?? Environment.GetEnvironmentVariable("SUPERADMIN_ID");
-
 long.TryParse(superAdminRaw, out var superAdminId);
 builder.Services.AddSingleton(new SuperAdminConfig(superAdminId));
 
@@ -105,6 +104,7 @@ builder.Services.AddSingleton<ISchedulingService, SchedulingService>();
 
 builder.Services.AddHostedService<BotUpdatesService>();
 builder.Services.AddCommanding();
+builder.Services.AddSingleton<BotCommandScopesPublisher>();
 
 // --------------------------------- Bootstrap + миграции EF
 var host = builder.Build();
@@ -127,6 +127,13 @@ using (var scope = host.Services.CreateScope())
         });
         await db.SaveChangesAsync();
     }
+
+    // Publish DM and Group command menus globally
+    var publisher = scope.ServiceProvider.GetRequiredService<BotCommandScopesPublisher>();
+    if (builder.Environment.IsDevelopment())
+    await publisher.RepublishAllAsync(CancellationToken.None);
+else
+    await publisher.VerifyAndFixAsync(CancellationToken.None);
 
     var log = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Program");
     var resolvedPath = new SqliteConnectionStringBuilder(db.Database.GetConnectionString()!).DataSource;

@@ -1,12 +1,18 @@
+using System.ComponentModel;
 using System.Threading.Tasks;
 using Telegram.Bot;
 using TgReminderBot.Data;
 using TgReminderBot.Models;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers;
 
+[RequireGroup]
+[RequireThread]
+[RequireChatAdmin]
 [Command("/setdefaulttopic")]
+[Description("Set the default topic for reminders in this chat.")]
 internal sealed class SetDefaultTopicHandler : ICommandHandler
 {
     private readonly ITelegramBotClient _bot;
