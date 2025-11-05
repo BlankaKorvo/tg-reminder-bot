@@ -26,7 +26,7 @@ internal sealed class AuthorizationMiddleware : ICommandMiddleware
         var message = ctx.Message;
         var text = message.Text ?? string.Empty;
 
-        // Определяем тип хэндлера по команде (учитывая /cmd@BotName)
+        //      ( /cmd@BotName)
         Type? handlerType = null;
         if (registry is not null && !string.IsNullOrWhiteSpace(text) && text.StartsWith('/'))
         {
@@ -50,23 +50,53 @@ internal sealed class AuthorizationMiddleware : ICommandMiddleware
 
         var isSuper = super is not null && ctx.UserId == super.Id;
 
-        // [RequireSuperAdmin]: не-супера режем сразу; супер идёт дальше к проверкам окружения
+
+        // [RequireSuperAdmin]: superadmin only
         if (handlerType?.GetCustomAttribute<RequireSuperAdminAttribute>() is not null && !isSuper)
         {
-            await ctx.Bot.SendMessage(message.Chat, "Доступ запрещён: только супер-админ.",
+            await ctx.Bot.SendMessage(message.Chat, "Access denied: superadmin only.",
                 replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = message.MessageId, AllowSendingWithoutReply = true },
                 messageThreadId: message.MessageThreadId,
                 cancellationToken: ctx.CancellationToken);
             return;
         }
 
-        // [RequireGroup]: только в группах/супергруппах (для супер-админа тоже)
+
+
+        // [PrivateOnly]: РєРѕРјР°РЅРґР° РґРѕСЃС‚СѓРїРЅР° С‚РѕР»СЊРєРѕ РІ Р»РёС‡РЅС‹С… СЃРѕРѕР±С‰РµРЅРёСЏС…
+        if (handlerType?.GetCustomAttribute<PrivateOnlyAttribute>() is not null)
+        {
+            if (message.Chat.Type != ChatType.Private)
+            {
+                await ctx.Bot.SendMessage(message.Chat, "This command is available only in private chat.",
+                    replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = message.MessageId, AllowSendingWithoutReply = true },
+                    messageThreadId: message.MessageThreadId,
+                    cancellationToken: ctx.CancellationToken);
+                return;
+            }
+        }
+
+
+        // [PrivateOnly]: private chats only
+        if (handlerType?.GetCustomAttribute<PrivateOnlyAttribute>() is not null)
+        {
+            if (message.Chat.Type != ChatType.Private)
+            {
+                await ctx.Bot.SendMessage(message.Chat, "This command is available only in private chat.",
+                    replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = message.MessageId, AllowSendingWithoutReply = true },
+                    messageThreadId: message.MessageThreadId,
+                    cancellationToken: ctx.CancellationToken);
+                return;
+            }
+        }
+
+        // [RequireGroup]:   / ( - )
         if (handlerType?.GetCustomAttribute<RequireGroupAttribute>() is not null)
         {
             var type = message.Chat.Type;
             if (type != ChatType.Group && type != ChatType.Supergroup)
             {
-                await ctx.Bot.SendMessage(message.Chat, "Эта команда доступна только в группах.",
+                await ctx.Bot.SendMessage(message.Chat, "     .",
                     replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = message.MessageId, AllowSendingWithoutReply = true },
                     messageThreadId: message.MessageThreadId,
                     cancellationToken: ctx.CancellationToken);
@@ -74,12 +104,12 @@ internal sealed class AuthorizationMiddleware : ICommandMiddleware
             }
         }
 
-        // [RequireThread]: только внутри темы (для супер-админа тоже)
+        // [RequireThread]:    ( - )
         if (handlerType?.GetCustomAttribute<RequireThreadAttribute>() is not null)
         {
             if (message.MessageThreadId is null)
             {
-                await ctx.Bot.SendMessage(message.Chat, "Эта команда должна выполняться внутри темы.",
+                await ctx.Bot.SendMessage(message.Chat, "     .",
                     replyParameters: new Telegram.Bot.Types.ReplyParameters { MessageId = message.MessageId, AllowSendingWithoutReply = true },
                     messageThreadId: message.MessageThreadId,
                     cancellationToken: ctx.CancellationToken);
@@ -87,14 +117,14 @@ internal sealed class AuthorizationMiddleware : ICommandMiddleware
             }
         }
 
-        // Bypass: супер-админ или [RequireAll] не идут через AccessGuard (но уже прошли env-проверки выше)
+        // Bypass: -  [RequireAll]    AccessGuard (   env- )
         if (isSuper || handlerType?.GetCustomAttribute<RequireAllAttribute>() is not null)
         {
             await next();
             return;
         }
 
-        // Остальные — через централизованный Guard
+        //     Guard
         var result = await _guard.Authorize(message, ctx.CancellationToken);
         if (!result.Allowed)
         {

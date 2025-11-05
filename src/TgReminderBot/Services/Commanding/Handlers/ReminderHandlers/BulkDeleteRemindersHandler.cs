@@ -14,6 +14,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 namespace TgReminderBot.Services.Commanding.Handlers.ReminderHandlers;
 
 [RequireGroup]
+[RequireChatAdmin]
 [Command("/rmrems")]
 [Description("Удалить несколько напоминаний по id или префиксам: /rmrems <id|prefix> [id2|prefix2] ... (поддерживает переносы строк, запятые и ;)")]
 internal sealed class BulkDeleteRemindersHandler : ICommandHandler

@@ -15,6 +15,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.ReminderHandlers;
 
+[RequireChatAdmin]
 [RequireGroup]
 [Command("/remind")]
 [Description("Создать одноразовое напоминание: /remind <YYYY-MM-DD HH:mm[:ss][Z|+03:00]> — текст")]
@@ -53,11 +54,14 @@ internal sealed class CreateReminderHandler : ICommandHandler
         var zone = TimeZoneInfo.FindSystemTimeZoneById(tz);
 
         // Топик по умолчанию
-        int? threadId = ctx.ThreadId;
+        int? threadId = null;
         var cs = await _db.ChatSettings.AsNoTracking()
             .FirstOrDefaultAsync(x => x.ChatId == ctx.ChatId, ctx.CancellationToken);
-        if (threadId is null && cs?.DefaultReminderThreadId is int defThread)
+
+        if (cs?.DefaultReminderThreadId is int defThread)
             threadId = defThread;
+        else
+            threadId = ctx.ThreadId;
 
         if (text.StartsWith("— ")) text = text[2..];
         if (text.StartsWith("- ")) text = text[2..];

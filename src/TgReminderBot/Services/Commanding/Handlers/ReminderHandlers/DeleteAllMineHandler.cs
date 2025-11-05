@@ -12,6 +12,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.ReminderHandlers;
 
+[RequireChatAdmin]
 [RequireGroup]
 [Command("/rmallmine")]
 [Description("Удалить все мои напоминания в текущем чате")]

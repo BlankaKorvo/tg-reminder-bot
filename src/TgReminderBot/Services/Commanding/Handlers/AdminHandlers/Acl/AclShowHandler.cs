@@ -12,8 +12,8 @@ using System.ComponentModel;
 
 namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers.Acl;
 
-[RequireGroup]
 [RequireSuperAdmin]
+[PrivateOnly]
 [Command("/acl")]
 [Description("Show current ACL settings.")]
 internal sealed class AclShowHandler : AclHandlerBase

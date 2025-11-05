@@ -9,8 +9,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Reminder> Reminders => Set<Reminder>();
     public DbSet<ChatSettings> ChatSettings => Set<ChatSettings>();
-    public DbSet<AccessRule> AccessRules => Set<AccessRule>();
     public DbSet<AccessOptions> AccessOptions => Set<AccessOptions>();
+    public DbSet<AccessRule> AccessRules => Set<AccessRule>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -29,5 +29,30 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AccessOptions>().HasKey(x => x.Id);
 
         modelBuilder.Entity<UserSettings>().HasKey(x => x.UserId);
+
+        // ACL: AccessOptions (одна строка с Id=1)
+        modelBuilder.Entity<AccessOptions>(e =>
+        {
+            e.ToTable("AccessOptions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.WhitelistEnabled).IsRequired();
+            e.Property(x => x.UpdatedAt).IsRequired();
+        });
+
+        // ACL: AccessRules
+        modelBuilder.Entity<AccessRule>(e =>
+        {
+            e.ToTable("AccessRules");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedOnAdd();
+            e.Property(x => x.Target).IsRequired();
+            e.Property(x => x.TargetId).IsRequired();
+            e.Property(x => x.Mode).IsRequired();
+            e.Property(x => x.CreatedAt).IsRequired();
+
+            // быстрый поиск конкретного объекта (пользователь/чат)
+            e.HasIndex(x => new { x.Target, x.TargetId });
+        });
     }
 }

@@ -12,6 +12,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.ReminderHandlers;
 
+[RequireChatAdmin]
 [RequireGroup]
 [Command("/reminders")]
 [Description("Список ваших напоминаний в этом чате")]

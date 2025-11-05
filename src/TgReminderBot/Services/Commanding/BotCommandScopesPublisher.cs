@@ -17,29 +17,23 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding
 {
-    /// <summary>
-    /// Publishes Telegram command menus by scope.
-    /// - AllPrivateChats: only strictly private commands
-    /// - AllGroupChats:   base set visible to everyone in groups
-    /// - Per chat: Chat (everyone), ChatAdministrators (admins), ChatMember (superadmin)
-    /// </summary>
-    public sealed class BotCommandScopesPublisher
+    internal sealed class BotCommandScopesPublisher
     {
         private readonly ITelegramBotClient _bot;
-        private readonly ILogger<BotCommandScopesPublisher> _log;
         private readonly CommandRegistry _registry;
-        private readonly SuperAdminConfig _super;
+        private readonly ILogger<BotCommandScopesPublisher> _log;
+        private readonly SuperAdminConfig _super; // у тебя: record SuperAdminConfig(long Id)
         private readonly ConcurrentDictionary<long, byte> _publishedChats = new();
 
         public BotCommandScopesPublisher(
             ITelegramBotClient bot,
-            ILogger<BotCommandScopesPublisher> log,
             CommandRegistry registry,
+            ILogger<BotCommandScopesPublisher> log,
             SuperAdminConfig super)
         {
             _bot = bot;
-            _log = log;
             _registry = registry;
+            _log = log;
             _super = super;
         }
 
@@ -49,17 +43,20 @@ namespace TgReminderBot.Services.Commanding
         private static bool IsSuperRestricted(Type t) =>
             Has<RequireSuperAdminAttribute>(t) || typeof(IRequireSuperAdmin).IsAssignableFrom(t);
 
-        // Read description from class attributes or fallback.
         private static string GetDescriptionFrom(Type handlerType)
         {
             var d1 = handlerType.GetCustomAttribute<DescriptionAttribute>(inherit: false)?.Description;
             if (!string.IsNullOrWhiteSpace(d1)) return d1!;
             var d2 = handlerType.GetCustomAttribute<DisplayAttribute>(inherit: false)?.Description;
             if (!string.IsNullOrWhiteSpace(d2)) return d2!;
-            return "—";
+            return string.Empty;
         }
 
-        private (BotCommand[] priv, BotCommand[] groupEveryone, BotCommand[] groupAdmins, BotCommand[] groupAll)
+        private static BotCommand Cmd((string cmd, Type type) x) =>
+            new BotCommand { Command = x.cmd, Description = GetDescriptionFrom(x.type) };
+
+        private (BotCommand[] privPublic, BotCommand[] privSuper,
+                 BotCommand[] groupEveryone, BotCommand[] groupAdmins, BotCommand[] groupAll)
             BuildCommandBuckets()
         {
             var snapshot = _registry.Snapshot(); // "/cmd" -> handler type
@@ -71,75 +68,116 @@ namespace TgReminderBot.Services.Commanding
                 var cmd = kv.Key.TrimStart('/');
 
                 var isPrivateOnly = Has<PrivateOnlyAttribute>(type);
-                var isGroupOnly   = Has<RequireGroupAttribute>(type);
-                var isAdminOnly   = Has<RequireChatAdminAttribute>(type);
-                var isSuperOnly   = IsSuperRestricted(type);
+                var isAdminOnly = Has<RequireChatAdminAttribute>(type);
+                var isSuperOnly = IsSuperRestricted(type);
 
-                items.Add((cmd, type, isPrivateOnly, isGroupOnly, isAdminOnly, isSuperOnly));
+                items.Add((cmd, type,
+                    priv: isPrivateOnly,
+                    group: !isPrivateOnly,     // всё, что не private — публикуем для групп
+                    admin: isAdminOnly,
+                    super: isSuperOnly));
             }
 
-            static BotCommand MakeCmd((string cmd, Type type, bool priv, bool group, bool admin, bool super) x)
-                => new BotCommand { Command = x.cmd, Description = GetDescriptionFrom(x.type) ?? "—" };
+            // PRIVATE
+            var privPublic = items.Where(x => x.priv && !x.super)
+                                  .Select(x => Cmd((x.cmd, x.type)))
+                                  .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                  .Select(g => g.First())
+                                  .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                  .ToArray();
 
-            // Private DM list: only strictly private-marked commands
-            var privateCmds = items
-                .Where(x => x.priv)
-                .Select(MakeCmd)
-                .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-                .ToArray();
+            var privSuper = items.Where(x => x.priv && x.super)
+                                  .Select(x => Cmd((x.cmd, x.type)))
+                                  .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                  .Select(g => g.First())
+                                  .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                  .ToArray();
 
-            // Group buckets
-            var groupEveryone = items
-                .Where(x => x.group && !x.admin && !x.super)
-                .Select(MakeCmd)
-                .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-                .ToArray();
+            // GROUPS
+            var groupEveryone = items.Where(x => x.group && !x.admin && !x.super)
+                                     .Select(x => Cmd((x.cmd, x.type)))
+                                     .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                     .Select(g => g.First())
+                                     .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                     .ToArray();
 
-            var groupAdmins = items
-                .Where(x => x.group && !x.super) // include everyone + admin-only
-                .Select(MakeCmd)
-                .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-                .ToArray();
+            var groupAdmins = items.Where(x => x.group && x.admin && !x.super)
+                                     .Select(x => Cmd((x.cmd, x.type)))
+                                     .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                     .Select(g => g.First())
+                                     .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                     .ToArray();
 
-            // All group commands including superadmin-only (used for ChatMember(superadmin))
-            var groupAll = items
-                .Where(x => x.group || x.admin || x.super)
-                .Select(MakeCmd)
-                .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-                .ToArray();
+            var groupAll = items.Where(x => x.group) // всё групповое (включая админские)
+                                     .Select(x => Cmd((x.cmd, x.type)))
+                                     .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                     .Select(g => g.First())
+                                     .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase)
+                                     .ToArray();
 
-            return (privateCmds, groupEveryone, groupAdmins, groupAll);
+            return (privPublic, privSuper, groupEveryone, groupAdmins, groupAll);
         }
 
-        /// <summary>Publish global menus for private and group chats.</summary>
+        private static bool AreSame(IReadOnlyList<BotCommand> a, IReadOnlyList<BotCommand> b)
+        {
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (!string.Equals(a[i].Command, b[i].Command, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(a[i].Description ?? string.Empty, b[i].Description ?? string.Empty, StringComparison.Ordinal))
+                    return false;
+            return true;
+        }
+
+        /// <summary>Совместимость: старые вызовы через Extensions делегируют сюда.</summary>
+        public Task RepublishAllAsync(CancellationToken ct) => PublishGlobalAsync(ct);
+
+        /// <summary>Переопубликовать все глобальные scope-ы.</summary>
         public async Task PublishGlobalAsync(CancellationToken ct)
         {
-            var (priv, groupEveryone, _, _) = BuildCommandBuckets();
-            _log.LogInformation("Publishing global commands: private={Priv}, groups(everyone)={Grp}",
-                priv.Length, groupEveryone.Length);
+            var (privPublic, privSuper, groupEveryone, _, _) = BuildCommandBuckets();
 
-            // Clear default so it doesn't bleed into scoped menus
+            // AllPrivateChats — только публичные приватные (без super-only)
+            var srvPriv = await _bot.GetMyCommands(scope: new BotCommandScopeAllPrivateChats(), cancellationToken: ct);
+            if (!AreSame(srvPriv.OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray(), privPublic))
+            {
+                await _bot.DeleteMyCommands(scope: new BotCommandScopeAllPrivateChats(), cancellationToken: ct);
+                if (privPublic.Length > 0)
+                    await _bot.SetMyCommands(privPublic, scope: new BotCommandScopeAllPrivateChats(), cancellationToken: ct);
+            }
+
+            // Личка супер-админа — только super-only приватные
+            if (_super is not null && _super.Id != 0)
+            {
+                var superScope = new BotCommandScopeChat { ChatId = _super.Id };
+                var srvSuper = await _bot.GetMyCommands(scope: superScope, cancellationToken: ct);
+                if (!AreSame(srvSuper.OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray(), privSuper))
+                {
+                    await _bot.DeleteMyCommands(scope: superScope, cancellationToken: ct);
+                    if (privSuper.Length > 0)
+                        await _bot.SetMyCommands(privSuper, scope: superScope, cancellationToken: ct);
+                }
+            }
+
+            // Default — очищаем, чтобы не наслаивалось
             await _bot.DeleteMyCommands(scope: new BotCommandScopeDefault(), cancellationToken: ct);
 
-            if (priv.Length > 0)
-                await _bot.SetMyCommands(priv, scope: new BotCommandScopeAllPrivateChats(), cancellationToken: ct);
-
-            await _bot.SetMyCommands(groupEveryone, scope: new BotCommandScopeAllGroupChats(), cancellationToken: ct);
+            // AllGroupChats — только «для всех»
+            var srvGroups = await _bot.GetMyCommands(scope: new BotCommandScopeAllGroupChats(), cancellationToken: ct);
+            if (!AreSame(srvGroups.OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray(), groupEveryone))
+            {
+                await _bot.DeleteMyCommands(scope: new BotCommandScopeAllGroupChats(), cancellationToken: ct);
+                if (groupEveryone.Length > 0)
+                    await _bot.SetMyCommands(groupEveryone, scope: new BotCommandScopeAllGroupChats(), cancellationToken: ct);
+            }
         }
 
-        /// <summary>
-        /// Ensure per-chat menus are published once for the given chat id.
-        /// Sets:
-        ///   - Chat (visible to everyone in chat)
-        ///   - ChatAdministrators (visible to admins of this chat)
-        ///   - ChatMember(superAdmin) (visible only to configured superadmin)
-        /// </summary>
+        /// <summary>Перечень команд per-chat (everyone/admins и «все» для супера).</summary>
         public async Task EnsureChatPublishedAsync(long chatId, CancellationToken ct)
         {
             if (!_publishedChats.TryAdd(chatId, 1))
-                return; // already published
+                return; // уже делали
 
-            var (_, groupEveryone, groupAdmins, groupAll) = BuildCommandBuckets();
+            var (_, _, groupEveryone, groupAdmins, groupAll) = BuildCommandBuckets();
 
             _log.LogInformation("Publishing per-chat commands for {ChatId}: everyone={E}, admins={A}, all={All}",
                 chatId, groupEveryone.Length, groupAdmins.Length, groupAll.Length);

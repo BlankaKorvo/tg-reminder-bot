@@ -15,7 +15,7 @@ public class BotUpdatesService : BackgroundService
     private readonly IServiceProvider _sp;
     private readonly BotCommandScopesPublisher _publisher;
 
-    public BotUpdatesService(ITelegramBotClient bot, ILogger<BotUpdatesService> log, IServiceProvider sp, BotCommandScopesPublisher publisher) {
+    internal BotUpdatesService(ITelegramBotClient bot, ILogger<BotUpdatesService> log, IServiceProvider sp, BotCommandScopesPublisher publisher) {
         _bot = bot;
         _log = log;
         _sp = sp;

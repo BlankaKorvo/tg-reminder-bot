@@ -3,11 +3,12 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 using TgReminderBot.Services.Commanding.Abstractions;
+using TgReminderBot.Models;
 using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers.Acl;
 
-[RequireGroup]
+[PrivateOnly]
 [RequireSuperAdmin]
 [Command("/whitelist")]
 [Description("Enable or disable whitelist mode.")]

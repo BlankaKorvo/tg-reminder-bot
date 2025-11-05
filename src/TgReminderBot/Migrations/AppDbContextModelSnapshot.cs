@@ -21,7 +21,7 @@ namespace TgReminderBot.Migrations
             modelBuilder.Entity("TgReminderBot.Models.AccessOptions", b =>
             {
                 b.Property<int>("Id")
-                    .ValueGeneratedOnAdd()
+                    
                     .HasColumnType("INTEGER");
 
                 b.Property<bool>("WhitelistEnabled")
@@ -36,7 +36,7 @@ namespace TgReminderBot.Migrations
 
             modelBuilder.Entity("TgReminderBot.Models.AccessRule", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 

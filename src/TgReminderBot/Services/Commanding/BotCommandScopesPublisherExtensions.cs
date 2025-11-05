@@ -62,9 +62,15 @@ namespace TgReminderBot.Services.Commanding
                 items.Add((cmd, type, isPrivateOnly, isGroupOnly, isAdminOnly, isSuperOnly));
             }
 
-            var desiredPriv = items.Where(x => x.priv).Select(Cmd)
-                .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-                .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray();
+            
+var desiredPrivPublic = items.Where(x => x.priv && !x.super).Select(Cmd)
+    .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+    .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray();
+
+var desiredPrivSuper = items.Where(x => x.priv && x.super).Select(Cmd)
+    .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+    .OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray();
+
 
             var desiredGroupEveryone = items.Where(x => x.group && !x.admin && !x.super).Select(Cmd)
                 .GroupBy(c => c.Command, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
@@ -86,8 +92,11 @@ namespace TgReminderBot.Services.Commanding
             if (def.Count() > 0)
                 await bot.DeleteMyCommands(scope: new BotCommandScopeDefault(), cancellationToken: ct);
 
-            // AllPrivateChats
+            
+
+// AllPrivateChats
             var srvPriv = await bot.GetMyCommands(scope: new BotCommandScopeAllPrivateChats(), cancellationToken: ct);
+            var desiredPriv = desiredPrivPublic;
             if (!AreSame(srvPriv.OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray(), desiredPriv))
             {
                 await bot.DeleteMyCommands(scope: new BotCommandScopeAllPrivateChats(), cancellationToken: ct);
@@ -95,7 +104,22 @@ namespace TgReminderBot.Services.Commanding
                     await bot.SetMyCommands(desiredPriv, scope: new BotCommandScopeAllPrivateChats(), cancellationToken: ct);
             }
 
+            // Private menu for superadmin only (personal scope)
+            if (super is not null && super.Id != 0)
+            {
+                var superScope = new BotCommandScopeChat { ChatId = super.Id };
+                var srvSuper = await bot.GetMyCommands(scope: superScope, cancellationToken: ct);
+                if (!AreSame(srvSuper.OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray(), desiredPrivSuper))
+                {
+                    await bot.DeleteMyCommands(scope: superScope, cancellationToken: ct);
+                    if (desiredPrivSuper.Length > 0)
+                        await bot.SetMyCommands(desiredPrivSuper, scope: superScope, cancellationToken: ct);
+                }
+            }
+
             // AllGroupChats
+
+
             var srvGrp = await bot.GetMyCommands(scope: new BotCommandScopeAllGroupChats(), cancellationToken: ct);
             if (!AreSame(srvGrp.OrderBy(c => c.Command, StringComparer.OrdinalIgnoreCase).ToArray(), desiredGroupEveryone))
             {

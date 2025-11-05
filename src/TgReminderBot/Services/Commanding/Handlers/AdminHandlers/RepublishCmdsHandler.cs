@@ -6,8 +6,10 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers
 {
-    [Command("/republish_cmds")]
     [RequireSuperAdmin]
+    [PrivateOnly]
+    [Command("/republish_cmds")]
+
     [Description("Перепубликовать меню команд во всех scope")]
     internal sealed class RepublishCmdsHandler : ICommandHandler
     {

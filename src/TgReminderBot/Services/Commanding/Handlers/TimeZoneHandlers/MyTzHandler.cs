@@ -7,7 +7,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.TimeZoneHandlers;
 
-[RequireAll]
+[RequireChatAdmin]
 [RequireGroup]
 [Command("/mytz")]
 [Description("Show your current time zone setting.")]

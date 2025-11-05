@@ -103,12 +103,16 @@ builder.Services.AddSingleton<IAccessPolicy, AccessPolicy>();
 builder.Services.AddSingleton<IAccessGuard, AccessGuard>();
 builder.Services.AddSingleton<ITelegramSender, TelegramSender>();
 
-// >>> ВОТ ЭТА СТРОКА — ИСПРАВЛЕНИЕ <<<
+// 
 builder.Services.AddSingleton<ISchedulingService, SchedulingService>();
 
 builder.Services.AddSingleton<BotCommandScopesPublisher>();
-builder.Services.AddCommanding(); // твой экстеншен, вместо Scrutor/Scan
-builder.Services.AddHostedService<BotUpdatesService>();
+builder.Services.AddCommanding(); 
+builder.Services.AddHostedService(sp => new TgReminderBot.Services.BotUpdatesService(
+    sp.GetRequiredService<ITelegramBotClient>(),
+    sp.GetRequiredService<ILogger<TgReminderBot.Services.BotUpdatesService>>(),
+    sp,
+    sp.GetRequiredService<BotCommandScopesPublisher>()));
 
 var host = builder.Build();
 
@@ -116,8 +120,13 @@ var host = builder.Build();
 using (var scope = host.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    // 1) сначала применяем миграции
     await db.Database.MigrateAsync();
 
+    // 2) затем — безопасная инициализация дефолтов (если вдруг сид из миграции удалят)
+    await db.EnsureAclDefaultsAsync();
+
+    // публикация/верификация команд и т.д.
     var publisher = scope.ServiceProvider.GetRequiredService<BotCommandScopesPublisher>();
     if (builder.Environment.IsDevelopment())
         await publisher.RepublishAllAsync(CancellationToken.None);

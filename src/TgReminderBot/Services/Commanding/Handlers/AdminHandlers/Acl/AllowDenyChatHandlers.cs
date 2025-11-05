@@ -8,7 +8,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers.Acl;
 
-[RequireGroup]
+[PrivateOnly]
 [RequireSuperAdmin]
 [Command("/allowchat")]
 [Description("Allow this chat to use the bot.")]
@@ -40,7 +40,7 @@ internal sealed class AllowChatHandler : AclHandlerBase
             cancellationToken: ctx.CancellationToken);
     }
 }
-[RequireGroup]
+[PrivateOnly]
 [RequireSuperAdmin]
 [Command("/denychat")]
 [Description("Deny this chat to use the bot.")]
@@ -72,8 +72,8 @@ internal sealed class DenyChatHandler : AclHandlerBase
             cancellationToken: ctx.CancellationToken);
     }
 }
+[PrivateOnly]
 [RequireSuperAdmin]
-[RequireGroup]
 [Command("/revokechat")]
 [Description("Revoke allow/deny rules for this chat.")]
 internal sealed class RevokeChatHandler : AclHandlerBase

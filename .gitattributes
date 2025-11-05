@@ -1,8 +1,11 @@
-# Всегда храним текст в LF внутри репозитория
-* text=auto eol=lf
+# Нормализуем текстовые файлы в репозитории к LF
+* text=auto
 
-# (Необязательно) Явно для типичных текстовых файлов:
-*.cs   text eol=lf
-*.json text eol=lf
-*.csproj text eol=lf
-*.sln text eol=lf
+# Скрипты под Unix — строго LF
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# Windows-скрипты — строго CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf

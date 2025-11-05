@@ -8,7 +8,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers.Acl;
 
-[RequireGroup]
+[PrivateOnly]
 [RequireSuperAdmin]
 [Command("/allowuser")]
 [Description("Allow this user to use the bot.")]
@@ -47,7 +47,7 @@ internal sealed class AllowUserHandler : AclHandlerBase
             cancellationToken: ctx.CancellationToken);
     }
 }
-[RequireGroup]
+[PrivateOnly]
 [RequireSuperAdmin]
 [Command("/denyuser")]
 [Description("Deny this user to use the bot.")]
@@ -87,7 +87,7 @@ internal sealed class DenyUserHandler : AclHandlerBase
             cancellationToken: ctx.CancellationToken);
     }
 }
-[RequireGroup]
+[PrivateOnly]
 [RequireSuperAdmin]
 [Command("/revokeuser")]
 [Description("Revoke all ACL rules for this user.")]

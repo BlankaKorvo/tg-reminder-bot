@@ -12,6 +12,7 @@ using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
 namespace TgReminderBot.Services.Commanding.Handlers.ReminderHandlers;
 
+[RequireChatAdmin]
 [RequireGroup]
 [Command("/events")]
 [Description("Пакетное создание событий. Формат: <YYYY-MM-DD HH:mm[:ss][Z|+03:00]> <offsets> — <текст>. Опция: слово 'poll' в offsets создаст опрос на последнем напоминании (кроме 0).")]
@@ -47,11 +48,14 @@ internal sealed class BulkEventsHandler : ICommandHandler
         var tz = (await _db.UserSettings.AsNoTracking()
             .FirstOrDefaultAsync(x => x.UserId == ctx.UserId, ctx.CancellationToken))?.TimeZone ?? "Europe/Moscow";
 
-        int? threadId = ctx.ThreadId;
+        int? threadId = null;
         var cs = await _db.ChatSettings.AsNoTracking()
             .FirstOrDefaultAsync(x => x.ChatId == ctx.ChatId, ctx.CancellationToken);
-        if (threadId is null && cs?.DefaultReminderThreadId is int defThread)
+
+        if (cs?.DefaultReminderThreadId is int defThread)
             threadId = defThread;
+        else
+            threadId = ctx.ThreadId;
 
         var lines = body.Replace("\r", string.Empty)
                         .Split('\n', StringSplitOptions.RemoveEmptyEntries)

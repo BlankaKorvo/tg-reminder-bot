@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using TgReminderBot.Data;
 using TgReminderBot.Models;
 
@@ -11,26 +12,44 @@ public sealed class AccessPolicy : IAccessPolicy
 
     public async Task<bool> IsAllowed(long userId, long chatId, CancellationToken ct)
     {
-        var opt = await _db.AccessOptions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct)
+        AccessOptions opt;
+        try
+        {
+            opt = await _db.AccessOptions.AsNoTracking().FirstOrDefaultAsync(x => x.Id == 1, ct)
                   ?? new AccessOptions { WhitelistEnabled = false };
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 && ex.Message.Contains("no such table"))
+        {
+            // База ещё не полностью мигрирована — считаем whitelist выключенным.
+            opt = new AccessOptions { WhitelistEnabled = false };
+        }
 
-        var userRules = await _db.AccessRules.AsNoTracking()
-            .Where(r => r.Target == AccessTarget.User && r.TargetId == userId)
-            .ToListAsync(ct);
+        // ВАЖНО: SQLite не поддерживает ORDER BY по DateTimeOffset.
+        // В исходном коде правила сортировались по CreatedAt и забирались списком,
+        // но далее использовались только проверки Any().
+        // Переписываем на точечные AnyAsync без сортировок и без materialize списков.
 
-        var chatRules = await _db.AccessRules.AsNoTracking()
-            .Where(r => r.Target == AccessTarget.Chat && r.TargetId == chatId)
-            .ToListAsync(ct);
+        // 1) Явные запреты имеют максимальный приоритет.
+        if (await _db.AccessRules.AsNoTracking()
+                .AnyAsync(r => r.Target == AccessTarget.User && r.TargetId == userId && r.Mode == AccessMode.Deny, ct))
+            return false;
 
-        if (userRules.Any(r => r.Mode == AccessMode.Deny)) return false;
-        if (chatRules.Any(r => r.Mode == AccessMode.Deny)) return false;
+        if (await _db.AccessRules.AsNoTracking()
+                .AnyAsync(r => r.Target == AccessTarget.Chat && r.TargetId == chatId && r.Mode == AccessMode.Deny, ct))
+            return false;
 
+        // 2) Если whitelist выключен — доступ разрешён.
         if (!opt.WhitelistEnabled) return true;
 
-        bool allowed =
-            userRules.Any(r => r.Mode == AccessMode.Allow) ||
-            chatRules.Any(r => r.Mode == AccessMode.Allow);
+        // 3) При включённом whitelist — достаточно одного разрешающего правила для пользователя или чата.
+        var userAllowed = await _db.AccessRules.AsNoTracking()
+            .AnyAsync(r => r.Target == AccessTarget.User && r.TargetId == userId && r.Mode == AccessMode.Allow, ct);
 
-        return allowed;
+        if (userAllowed) return true;
+
+        var chatAllowed = await _db.AccessRules.AsNoTracking()
+            .AnyAsync(r => r.Target == AccessTarget.Chat && r.TargetId == chatId && r.Mode == AccessMode.Allow, ct);
+
+        return chatAllowed;
     }
 }
