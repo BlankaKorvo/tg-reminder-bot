@@ -5,7 +5,7 @@ using TgReminderBot.Data;
 using TgReminderBot.Services.Commanding.Abstractions;
 using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
-namespace TgReminderBot.Services.Commanding.Handlers;
+namespace TgReminderBot.Services.Commanding.Handlers.TimeZoneHandlers;
 
 [RequireAll]
 [RequireGroup]

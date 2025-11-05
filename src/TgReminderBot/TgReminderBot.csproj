@@ -43,9 +43,9 @@
     <Content Include="appsettings.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="sql\quartz\tables_sqlite.sql">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Services\Commanding\Handlers\Новая папка\" />
   </ItemGroup>
 
   <!-- Авто-инициализация схемы Quartz на этапе publish -->
@@ -68,8 +68,5 @@
 		<!-- наш маленький CLI-инит -->
 		<InitProj>$(ProjectDir)..\Tools\QuartzSqliteInit\QuartzSqliteInit.csproj</InitProj>
 	  </PropertyGroup>
-
-	  <Message Text="(Debug) Initializing Quartz schema: $(QuartzDb)" Importance="high" />
-	  <Exec Command="dotnet run --no-build --project &quot;$(InitProj)&quot; -- &quot;$(QuartzDb)&quot; &quot;$(QuartzSql)&quot;" />
   </Target>
 </Project>

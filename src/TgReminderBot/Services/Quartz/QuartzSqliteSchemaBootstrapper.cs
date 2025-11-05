@@ -1,0 +1,231 @@
+﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+
+namespace TgReminderBot.Services.Quartz;
+
+internal static class QuartzSqliteSchemaBootstrapper
+{
+    /// <summary>
+    /// Гарантирует наличие корректной схемы таблиц Quartz в SQLite.
+    /// Безопасно вызывать при каждом старте.
+    /// </summary>
+    public static async Task EnsureSqliteSchemaAsync(string sqliteDbPath, ILogger? log = null, CancellationToken ct = default)
+    {
+        var cs = $"Data Source={sqliteDbPath}";
+        await using var conn = new SqliteConnection(cs);
+        await conn.OpenAsync(ct);
+
+        // Безопасный режим: выполняем в транзакции и временно выключаем FK
+        await using (var pragmaOff = conn.CreateCommand())
+        {
+            pragmaOff.CommandText = "PRAGMA foreign_keys=OFF;";
+            await pragmaOff.ExecuteNonQueryAsync(ct);
+        }
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        // Уже есть?
+        await using (var check = conn.CreateCommand())
+        {
+            check.Transaction = (SqliteTransaction)tx;
+            check.CommandText = "SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='QRTZ_JOB_DETAILS'";
+            var exists = Convert.ToInt32(await check.ExecuteScalarAsync(ct)) > 0;
+            if (exists)
+            {
+                await tx.CommitAsync(ct);
+                await using (var pragmaOn = conn.CreateCommand())
+                {
+                    pragmaOn.CommandText = "PRAGMA foreign_keys=ON;";
+                    await pragmaOn.ExecuteNonQueryAsync(ct);
+                }
+                log?.LogInformation("Quartz schema detected in {Db}", sqliteDbPath);
+                return;
+            }
+        }
+
+        log?.LogInformation("Quartz schema not found. Creating in {Db} ...", sqliteDbPath);
+
+        // Выполняем скрипт по частям (разделитель — ';')
+        foreach (var raw in SqliteSchemaSql.Split(';'))
+        {
+            var sql = raw.Trim();
+            if (string.IsNullOrWhiteSpace(sql)) continue;
+            if (sql.StartsWith("--")) continue;
+
+            await using var cmd = conn.CreateCommand();
+            cmd.Transaction = (SqliteTransaction)tx;
+            cmd.CommandText = sql;
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        await tx.CommitAsync(ct);
+        await using (var pragmaOn = conn.CreateCommand())
+        {
+            pragmaOn.CommandText = "PRAGMA foreign_keys=ON;";
+            await pragmaOn.ExecuteNonQueryAsync(ct);
+        }
+        log?.LogInformation("Quartz schema created in {Db}", sqliteDbPath);
+    }
+
+    // Схема Quartz.NET 3.x для SQLite (адаптированная под Microsoft.Data.Sqlite).
+    // Важно: булевы флаги — INTEGER 0/1.
+    private const string SqliteSchemaSql = @"
+CREATE TABLE IF NOT EXISTS QRTZ_JOB_DETAILS (
+    SCHED_NAME TEXT NOT NULL,
+    JOB_NAME TEXT NOT NULL,
+    JOB_GROUP TEXT NOT NULL,
+    DESCRIPTION TEXT NULL,
+    JOB_CLASS_NAME TEXT NOT NULL,
+    IS_DURABLE INTEGER NOT NULL,
+    IS_NONCONCURRENT INTEGER NOT NULL,
+    IS_UPDATE_DATA INTEGER NOT NULL,
+    REQUESTS_RECOVERY INTEGER NOT NULL,
+    JOB_DATA BLOB NULL,
+    PRIMARY KEY (SCHED_NAME, JOB_NAME, JOB_GROUP)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_TRIGGERS (
+    SCHED_NAME TEXT NOT NULL,
+    TRIGGER_NAME TEXT NOT NULL,
+    TRIGGER_GROUP TEXT NOT NULL,
+    JOB_NAME TEXT NOT NULL,
+    JOB_GROUP TEXT NOT NULL,
+    DESCRIPTION TEXT NULL,
+    NEXT_FIRE_TIME INTEGER NULL,
+    PREV_FIRE_TIME INTEGER NULL,
+    PRIORITY INTEGER NULL,
+    TRIGGER_STATE TEXT NOT NULL,
+    TRIGGER_TYPE TEXT NOT NULL,
+    START_TIME INTEGER NOT NULL,
+    END_TIME INTEGER NULL,
+    CALENDAR_NAME TEXT NULL,
+    MISFIRE_INSTR INTEGER NULL,
+    JOB_DATA BLOB NULL,
+    PRIMARY KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP),
+    FOREIGN KEY (SCHED_NAME, JOB_NAME, JOB_GROUP)
+        REFERENCES QRTZ_JOB_DETAILS (SCHED_NAME, JOB_NAME, JOB_GROUP)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_SIMPLE_TRIGGERS (
+    SCHED_NAME TEXT NOT NULL,
+    TRIGGER_NAME TEXT NOT NULL,
+    TRIGGER_GROUP TEXT NOT NULL,
+    REPEAT_COUNT INTEGER NOT NULL,
+    REPEAT_INTERVAL INTEGER NOT NULL,
+    TIMES_TRIGGERED INTEGER NOT NULL,
+    PRIMARY KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP),
+    FOREIGN KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+        REFERENCES QRTZ_TRIGGERS (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_CRON_TRIGGERS (
+    SCHED_NAME TEXT NOT NULL,
+    TRIGGER_NAME TEXT NOT NULL,
+    TRIGGER_GROUP TEXT NOT NULL,
+    CRON_EXPRESSION TEXT NOT NULL,
+    TIME_ZONE_ID TEXT,
+    PRIMARY KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP),
+    FOREIGN KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+        REFERENCES QRTZ_TRIGGERS (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_SIMPROP_TRIGGERS (
+    SCHED_NAME TEXT NOT NULL,
+    TRIGGER_NAME TEXT NOT NULL,
+    TRIGGER_GROUP TEXT NOT NULL,
+    STR_PROP_1 TEXT NULL,
+    STR_PROP_2 TEXT NULL,
+    STR_PROP_3 TEXT NULL,
+    INT_PROP_1 INTEGER NULL,
+    INT_PROP_2 INTEGER NULL,
+    LONG_PROP_1 INTEGER NULL,
+    LONG_PROP_2 INTEGER NULL,
+    DEC_PROP_1 REAL NULL,
+    DEC_PROP_2 REAL NULL,
+    BOOL_PROP_1 INTEGER NULL,
+    BOOL_PROP_2 INTEGER NULL,
+    TIME_ZONE_ID TEXT NULL,
+    PRIMARY KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP),
+    FOREIGN KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+        REFERENCES QRTZ_TRIGGERS (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_BLOB_TRIGGERS (
+    SCHED_NAME TEXT NOT NULL,
+    TRIGGER_NAME TEXT NOT NULL,
+    TRIGGER_GROUP TEXT NOT NULL,
+    BLOB_DATA BLOB NULL,
+    PRIMARY KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP),
+    FOREIGN KEY (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+        REFERENCES QRTZ_TRIGGERS (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_CALENDARS (
+    SCHED_NAME TEXT NOT NULL,
+    CALENDAR_NAME TEXT NOT NULL,
+    CALENDAR BLOB NOT NULL,
+    PRIMARY KEY (SCHED_NAME, CALENDAR_NAME)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_PAUSED_TRIGGER_GRPS (
+    SCHED_NAME TEXT NOT NULL,
+    TRIGGER_GROUP TEXT NOT NULL,
+    PRIMARY KEY (SCHED_NAME, TRIGGER_GROUP)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_FIRED_TRIGGERS (
+    SCHED_NAME TEXT NOT NULL,
+    ENTRY_ID TEXT NOT NULL,
+    TRIGGER_NAME TEXT NOT NULL,
+    TRIGGER_GROUP TEXT NOT NULL,
+    INSTANCE_NAME TEXT NOT NULL,
+    FIRED_TIME INTEGER NOT NULL,
+    SCHED_TIME INTEGER NOT NULL,
+    PRIORITY INTEGER NOT NULL,
+    STATE TEXT NOT NULL,
+    JOB_NAME TEXT NULL,
+    JOB_GROUP TEXT NULL,
+    IS_NONCONCURRENT INTEGER NULL,
+    REQUESTS_RECOVERY INTEGER NULL,
+    PRIMARY KEY (SCHED_NAME, ENTRY_ID)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_SCHEDULER_STATE (
+    SCHED_NAME TEXT NOT NULL,
+    INSTANCE_NAME TEXT NOT NULL,
+    LAST_CHECKIN_TIME INTEGER NOT NULL,
+    CHECKIN_INTERVAL INTEGER NOT NULL,
+    PRIMARY KEY (SCHED_NAME, INSTANCE_NAME)
+);
+
+CREATE TABLE IF NOT EXISTS QRTZ_LOCKS (
+    SCHED_NAME TEXT NOT NULL,
+    LOCK_NAME TEXT NOT NULL,
+    PRIMARY KEY (SCHED_NAME, LOCK_NAME)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_J_REQ_RECOVERY ON QRTZ_JOB_DETAILS (SCHED_NAME, REQUESTS_RECOVERY);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_J_GRP          ON QRTZ_JOB_DETAILS (SCHED_NAME, JOB_GROUP);
+
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_T_J            ON QRTZ_TRIGGERS (SCHED_NAME, JOB_NAME, JOB_GROUP);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_T_JG           ON QRTZ_TRIGGERS (SCHED_NAME, JOB_GROUP);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_T_C            ON QRTZ_TRIGGERS (SCHED_NAME, CALENDAR_NAME);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_T_G            ON QRTZ_TRIGGERS (SCHED_NAME, TRIGGER_GROUP);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_T_STATE        ON QRTZ_TRIGGERS (SCHED_NAME, TRIGGER_STATE);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_T_NFT_ST_MIS_GRP ON QRTZ_TRIGGERS (SCHED_NAME, NEXT_FIRE_TIME, TRIGGER_STATE, MISFIRE_INSTR, TRIGGER_GROUP);
+
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_TRIG_INST_NAME     ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, INSTANCE_NAME);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_INST_JOB_REQ_RCVRY ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, INSTANCE_NAME, REQUESTS_RECOVERY);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_JOB_REQ_RCVRY      ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, JOB_NAME, JOB_GROUP, REQUESTS_RECOVERY);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_J_G                ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, JOB_NAME, JOB_GROUP);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_T_G                ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, TRIGGER_NAME, TRIGGER_GROUP);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_TG                 ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, TRIGGER_GROUP);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_FT                 ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, FIRED_TIME);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_ST                 ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, STATE);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_JG                 ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, JOB_GROUP);
+CREATE INDEX IF NOT EXISTS IDX_QRTZ_FT_J_NAME             ON QRTZ_FIRED_TRIGGERS (SCHED_NAME, JOB_NAME);
+";
+}

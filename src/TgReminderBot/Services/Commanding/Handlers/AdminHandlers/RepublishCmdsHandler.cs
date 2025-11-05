@@ -1,11 +1,10 @@
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Telegram.Bot;
-using TgReminderBot.Services.Commanding;
 using TgReminderBot.Services.Commanding.Abstractions;
 using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
-namespace TgReminderBot.Services.Commanding.Handlers.Admin
+namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers
 {
     [Command("/republish_cmds")]
     [RequireSuperAdmin]

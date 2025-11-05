@@ -5,7 +5,7 @@ using Telegram.Bot;
 using TgReminderBot.Services.Commanding.Abstractions;
 using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
-namespace TgReminderBot.Services.Commanding.Handlers.Acl;
+namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers.Acl;
 
 [RequireGroup]
 [RequireSuperAdmin]
@@ -13,14 +13,14 @@ namespace TgReminderBot.Services.Commanding.Handlers.Acl;
 [Description("Enable or disable whitelist mode.")]
 internal sealed class WhitelistHandler : AclHandlerBase
 {
-    public WhitelistHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, TgReminderBot.Models.SuperAdminConfig s) : base(bot, db, s) { }
+    public WhitelistHandler(Telegram.Bot.ITelegramBotClient bot, Data.AppDbContext db, Models.SuperAdminConfig s) : base(bot, db, s) { }
 
     public override async Task Execute(CommandContext ctx)
     {
         var arg = (ctx.Args ?? string.Empty).Trim().ToLowerInvariant();
 
         var opt = await Db.AccessOptions.FirstOrDefaultAsync(x => x.Id == 1, ctx.CancellationToken)
-                  ?? new TgReminderBot.Models.AccessOptions { Id = 1, WhitelistEnabled = false };
+                  ?? new Models.AccessOptions { Id = 1, WhitelistEnabled = false };
 
         if (arg is "on" or "1" or "true") opt.WhitelistEnabled = true;
         else if (arg is "off" or "0" or "false") opt.WhitelistEnabled = false;

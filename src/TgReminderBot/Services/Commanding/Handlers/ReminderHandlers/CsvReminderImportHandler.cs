@@ -3,7 +3,7 @@ using Telegram.Bot.Types;
 using Telegram.Bot;
 using TgReminderBot.Services.Commanding.Abstractions;
 
-namespace TgReminderBot.Services.Commanding.Handlers;
+namespace TgReminderBot.Services.Commanding.Handlers.ReminderHandlers;
 
 // Minimal CSV import handler placeholder. Matches *.csv documents.
 internal sealed class CsvReminderImportHandler : IDocumentHandler

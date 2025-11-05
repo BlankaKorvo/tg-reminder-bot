@@ -7,7 +7,7 @@ using TgReminderBot.Services.Commanding.Abstractions;
 using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 using TimeZoneConverter;
 
-namespace TgReminderBot.Services.Commanding.Handlers;
+namespace TgReminderBot.Services.Commanding.Handlers.TimeZoneHandlers;
 
 [RequireGroup]
 [RequireChatAdmin]

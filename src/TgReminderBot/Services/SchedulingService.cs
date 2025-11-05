@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+
+using System.Globalization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using Quartz.Impl.Matchers;
@@ -31,23 +33,15 @@ public sealed class SchedulingService : ISchedulingService
     {
         var sch = await _factory.GetScheduler(ct);
 
-        // Clean up all reminder triggers
+        // Clean all reminder triggers
         var all = await sch.GetTriggerKeys(GroupMatcher<TriggerKey>.GroupStartsWith("reminder"), ct);
-        foreach (var tk in all)
-            await sch.UnscheduleJob(tk, ct);
+        foreach (var tk in all) await sch.UnscheduleJob(tk, ct);
 
-        // Load active reminders
         var reminders = await db.Reminders.AsNoTracking().ToListAsync(ct);
         foreach (var r in reminders)
         {
-            try
-            {
-                await UpsertAndReschedule(r, defaultTz, null, ct);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Failed to reschedule reminder {Id}", r.Id);
-            }
+            try { await UpsertAndReschedule(r, defaultTz, null, ct); }
+            catch (Exception ex) { _log.LogError(ex, "Failed to reschedule reminder {Id}", r.Id); }
         }
     }
 
@@ -57,17 +51,16 @@ public sealed class SchedulingService : ISchedulingService
 
         // Remove previous triggers for this reminder
         var existing = await sch.GetTriggerKeys(GroupMatcher<TriggerKey>.GroupEndsWith($":{r.Id}"), ct);
-        foreach (var tk in existing)
-            await sch.UnscheduleJob(tk, ct);
+        foreach (var tk in existing) await sch.UnscheduleJob(tk, ct);
 
         // Normalize timezone
         var tzId = string.IsNullOrWhiteSpace(r.TimeZone) ? defaultTz : r.TimeZone.Trim();
         TimeZoneInfo tz;
         try { tz = TZConvert.GetTimeZoneInfo(tzId); }
-        catch { tz = TimeZoneInfo.FindSystemTimeZoneById("UTC"); }
+        catch { tz = TimeZoneInfo.Utc; }
 
-        // Build job key
-        var jobKey = new JobKey($"reminder:{r.Id}", "reminders");
+        // Ensure durable job exists
+        var jobKey = new JobKey($"reminders.reminder:{r.Id}", "reminders");
         if (!await sch.CheckExists(jobKey, ct))
         {
             await sch.AddJob(JobBuilder.Create<SendTelegramMessageJob>()
@@ -76,42 +69,45 @@ public sealed class SchedulingService : ISchedulingService
                 .Build(), true, ct);
         }
 
-        // Common job data
-        var data = new JobDataMap
+        // Base job data — strings only
+        var baseData = new JobDataMap
         {
-            ["chatId"] = r.ChatId,
+            ["chatId"] = r.ChatId.ToString(CultureInfo.InvariantCulture),
             ["text"] = r.Text ?? string.Empty,
+            ["title"] = r.Text ?? string.Empty,
             ["parseMode"] = r.ParseMode ?? string.Empty,
-            ["noPreview"] = r.NoPreview,
+            ["noPreview"] = r.NoPreview ? "true" : "false",
             ["_tag"] = tag ?? string.Empty
         };
-        if (r.ThreadId is int threadId) // только если есть
-            data["threadId"] = threadId;
+        if (r.ThreadId is int threadId)
+            baseData["threadId"] = threadId.ToString(CultureInfo.InvariantCulture);
 
         var triggers = new List<ITrigger>();
 
-        // 1) One-time RunAt (in local tz if no suffix)
+        // RunAt: one-off text reminder
         if (!string.IsNullOrWhiteSpace(r.RunAt) && TryParseLocalOrOffset(r.RunAt!, tz, out var runAtUtc))
         {
             if (runAtUtc > DateTimeOffset.UtcNow)
             {
+                var data = CloneJobData(baseData);
                 triggers.Add(TriggerBuilder.Create()
-                    .WithIdentity(new TriggerKey($"runat:{r.Id}", "reminder.single"))
+                    .WithIdentity(new TriggerKey($"reminder.single.runat:{r.Id}", "reminder.single"))
                     .ForJob(jobKey)
-                    .StartAt(runAtUtc.UtcDateTime)
                     .UsingJobData(data)
+                    .StartAt(runAtUtc.UtcDateTime)
                     .Build());
             }
         }
 
-        // 2) Cron (no offsets supported for cron)
+        // Cron
         if (!string.IsNullOrWhiteSpace(r.Cron))
         {
             try
             {
                 var cron = r.Cron!.Trim();
+                var data = CloneJobData(baseData);
                 triggers.Add(TriggerBuilder.Create()
-                    .WithIdentity(new TriggerKey($"cron:{r.Id}", "reminder.cron"))
+                    .WithIdentity(new TriggerKey($"reminder.cron:{r.Id}", "reminder.cron"))
                     .ForJob(jobKey)
                     .UsingJobData(data)
                     .WithCronSchedule(cron, x =>
@@ -127,18 +123,37 @@ public sealed class SchedulingService : ISchedulingService
             }
         }
 
-        // 3) EventAt + RemindOffsets (comma/space/semicolon separated, e.g. "-15m; 0; +5m; -1h")
+        // EventAt + RemindOffsets (+ optional poll on last-before)
         if (!string.IsNullOrWhiteSpace(r.EventAt) && TryParseLocalOrOffset(r.EventAt!, tz, out var eventUtc))
         {
             var offsets = ParseOffsets(r.RemindOffsets);
+            var wantPoll = HasPollFlag(r.RemindOffsets) || (tag?.Contains("poll", StringComparison.OrdinalIgnoreCase) ?? false);
+
+            // default (if no offsets) — notification at event time
             if (offsets.Count == 0) offsets.Add(TimeSpan.Zero);
+
+            // last-before = the closest negative offset to zero
+            var negatives = offsets.Where(o => o < TimeSpan.Zero).ToList();
+            var lastBefore = negatives.Count > 0 ? negatives.Max() : (TimeSpan?)null;
 
             foreach (var off in offsets)
             {
                 var when = eventUtc + off;
                 if (when <= DateTimeOffset.UtcNow) continue;
 
-                var key = $"event:{r.Id}:{off.TotalSeconds:+#;-#;0}s";
+                var data = CloneJobData(baseData);
+                data["timeLeftSec"] = Math.Abs(off.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+
+                // if poll requested and this is the last negative reminder (not zero) — send poll instead of text
+                var isPollHere = wantPoll && lastBefore.HasValue && off == lastBefore.Value && off != TimeSpan.Zero;
+                if (isPollHere)
+                {
+                    data["poll"] = "1";
+                    data["pollOptions"] = "Пойду|Возможно|Не смогу";
+                    data["pollQuestion"] = $"Кто пойдет на «{r.Text}»?";
+                }
+
+                var key = $"reminder.event:{r.Id}:{off.TotalSeconds:+#;-#;0}s";
                 triggers.Add(TriggerBuilder.Create()
                     .WithIdentity(new TriggerKey(key, "reminder.event"))
                     .ForJob(jobKey)
@@ -163,68 +178,65 @@ public sealed class SchedulingService : ISchedulingService
     public async Task DeleteAndUnschedule(string id, CancellationToken ct = default)
     {
         var sch = await _factory.GetScheduler(ct);
-
-        var tks = await sch.GetTriggerKeys(GroupMatcher<TriggerKey>.GroupStartsWith("reminder"), ct);
-        foreach (var tk in tks)
-        {
-            if (tk.Name.Contains(id, StringComparison.Ordinal))
-                await sch.UnscheduleJob(tk, ct);
-        }
-
-        var jobKey = new JobKey($"reminder:{id}", "reminders");
-        if (await sch.CheckExists(jobKey, ct))
-            await sch.DeleteJob(jobKey, ct);
-
-        _log.LogInformation("Unschedule complete for reminder {Id}", id);
+        var tks = await sch.GetTriggerKeys(GroupMatcher<TriggerKey>.GroupEndsWith($":{id}"), ct);
+        foreach (var tk in tks) await sch.UnscheduleJob(tk, ct);
     }
 
-    private static bool TryParseLocalOrOffset(string input, TimeZoneInfo tz, out DateTimeOffset utc)
+    private static bool TryParseLocalOrOffset(string input, TimeZoneInfo tz, out DateTimeOffset utcTime)
     {
-        // Accept ISO-8601 with or without offset; if no offset -> interpret as local in tz
-        if (DateTimeOffset.TryParse(input, out var dto))
+        input = input.Trim();
+        if (DateTimeOffset.TryParse(input, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var dto))
         {
-            if (input.EndsWith("Z", StringComparison.OrdinalIgnoreCase) || input.Contains('+'))
+            if (dto.Offset == TimeSpan.Zero || input.EndsWith("Z", StringComparison.OrdinalIgnoreCase) || input.Contains('+') || input.Contains('-') && input.LastIndexOf('-') > 8)
             {
-                utc = dto.ToUniversalTime();
-                return true;
+                utcTime = dto.ToUniversalTime();
             }
-            var local = DateTime.SpecifyKind(dto.DateTime, DateTimeKind.Unspecified);
-            var mapped = TimeZoneInfo.ConvertTimeToUtc(local, tz);
-            utc = new DateTimeOffset(mapped, TimeSpan.Zero);
+            else
+            {
+                var local = DateTime.SpecifyKind(dto.DateTime, DateTimeKind.Unspecified);
+                var zoned = TimeZoneInfo.ConvertTimeToUtc(local, tz);
+                utcTime = new DateTimeOffset(zoned, TimeSpan.Zero);
+            }
             return true;
         }
-        utc = default;
+        utcTime = default;
         return false;
     }
 
-    private static List<TimeSpan> ParseOffsets(string? raw)
+    private static List<TimeSpan> ParseOffsets(string? input)
     {
         var result = new List<TimeSpan>();
-        if (string.IsNullOrWhiteSpace(raw)) return result;
+        if (string.IsNullOrWhiteSpace(input)) return result;
 
-        var parts = raw.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        var parts = input.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var p in parts)
         {
-            var s = p.Trim();
             try
             {
-                var sign = 1;
-                if (s.StartsWith("+")) { sign = 1; s = s[1..]; }
-                else if (s.StartsWith("-")) { sign = -1; s = s[1..]; }
+                var s = p.Trim();
 
-                double value = 0;
-                string unit = "m";
-                for (int i = 0; i < s.Length; i++)
+                // ignore 'poll' token if present in offsets string
+                if (s.Equals("poll", StringComparison.OrdinalIgnoreCase)) continue;
+
+                var sign = 1.0;
+                if (s.StartsWith("+")) s = s[1..];
+                else if (s.StartsWith("-")) { sign = -1.0; s = s[1..]; }
+
+                var unit = string.Empty;
+                var valueStr = string.Empty;
+                foreach (var ch in s)
                 {
-                    if (!char.IsDigit(s[i]) && s[i] != '.')
-                    {
-                        value = double.Parse(s[..i]);
-                        unit = s[i..].ToLowerInvariant();
-                        goto Parsed;
-                    }
+                    if (char.IsDigit(ch) || ch == '.')
+                        valueStr += ch;
+                    else
+                        unit += ch;
                 }
-                value = double.Parse(s);
-            Parsed:
+
+                if (string.IsNullOrEmpty(valueStr)) continue;
+                var value = double.Parse(valueStr, CultureInfo.InvariantCulture);
+                unit = unit.Trim().ToLowerInvariant();
+                if (string.IsNullOrEmpty(unit)) unit = "m";
+
                 TimeSpan ts = unit switch
                 {
                     "s" or "sec" or "secs" or "second" or "seconds" => TimeSpan.FromSeconds(value),
@@ -238,5 +250,20 @@ public sealed class SchedulingService : ISchedulingService
             catch { }
         }
         return result;
+    }
+
+    private static bool HasPollFlag(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        var parts = input.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Any(p => string.Equals(p, "poll", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static JobDataMap CloneJobData(JobDataMap source)
+    {
+        var dst = new JobDataMap();
+        foreach (var kv in source)
+            dst[kv.Key] = kv.Value;
+        return dst;
     }
 }

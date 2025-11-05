@@ -6,7 +6,7 @@ using TgReminderBot.Models;
 using TgReminderBot.Services.Commanding.Abstractions;
 using TgReminderBot.Services.Commanding.Abstractions.Attributes;
 
-namespace TgReminderBot.Services.Commanding.Handlers.Acl;
+namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers.Acl;
 
 [RequireGroup]
 [RequireSuperAdmin]
@@ -14,7 +14,7 @@ namespace TgReminderBot.Services.Commanding.Handlers.Acl;
 [Description("Allow this chat to use the bot.")]
 internal sealed class AllowChatHandler : AclHandlerBase
 {
-    public AllowChatHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
+    public AllowChatHandler(Telegram.Bot.ITelegramBotClient bot, Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
     public override async Task Execute(CommandContext ctx)
     {
         if (!IsSuper(ctx.UserId))
@@ -46,7 +46,7 @@ internal sealed class AllowChatHandler : AclHandlerBase
 [Description("Deny this chat to use the bot.")]
 internal sealed class DenyChatHandler : AclHandlerBase
 {
-    public DenyChatHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
+    public DenyChatHandler(Telegram.Bot.ITelegramBotClient bot, Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
     public override async Task Execute(CommandContext ctx)
     {
         if (!IsSuper(ctx.UserId))
@@ -78,7 +78,7 @@ internal sealed class DenyChatHandler : AclHandlerBase
 [Description("Revoke allow/deny rules for this chat.")]
 internal sealed class RevokeChatHandler : AclHandlerBase
 {
-    public RevokeChatHandler(Telegram.Bot.ITelegramBotClient bot, TgReminderBot.Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
+    public RevokeChatHandler(Telegram.Bot.ITelegramBotClient bot, Data.AppDbContext db, SuperAdminConfig s) : base(bot, db, s) { }
     public override async Task Execute(CommandContext ctx)
     {
         if (!IsSuper(ctx.UserId))

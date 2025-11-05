@@ -90,10 +90,22 @@ public static class CommandRouter
 
     private static (string cmd, string args, bool mine) Parse(string text, string botUsername)
     {
-        if (string.IsNullOrWhiteSpace(text) || text[0] != '/') return ("", "", false);
-        var idx = text.IndexOf(' ');
-        string head = idx >= 0 ? text[..idx] : text;
-        string args = idx >= 0 ? text[(idx + 1)..].Trim() : string.Empty;
+        // Normalize line endings and trim start
+        text = text?.TrimStart() ?? string.Empty;
+
+        if (string.IsNullOrEmpty(text) || text[0] != '/')
+            return ("", "", false);
+
+
+        // Extract first token up to ANY whitespace (space, tab, CR, LF)
+        int split = -1;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (char.IsWhiteSpace(text[i])) { split = i; break; }
+        }
+
+        string head = split >= 0 ? text[..split] : text;
+        string args = split >= 0 ? text[(split + 1)..].Trim() : string.Empty;
 
         var at = head.IndexOf('@');
         if (at >= 0)

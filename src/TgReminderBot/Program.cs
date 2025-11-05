@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Net.Http;
-using Microsoft.Data.Sqlite;                  // единый стек SQLite
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -39,7 +39,7 @@ builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 builder.Services.AddSingleton<BotIdentity>(sp =>
 {
     var bot = sp.GetRequiredService<ITelegramBotClient>();
-    var me = bot.GetMe().GetAwaiter().GetResult(); // <-- вместо GetMeAsync()
+    var me = bot.GetMe().GetAwaiter().GetResult();
     return new BotIdentity(me.Id, me.Username ?? string.Empty);
 });
 
@@ -48,7 +48,6 @@ var superAdminRaw = builder.Configuration["Bot:SuperAdminId"]
                    ?? Environment.GetEnvironmentVariable("SUPERADMIN_ID");
 long.TryParse(superAdminRaw, out var superAdminId);
 builder.Services.AddSingleton(new SuperAdminConfig(superAdminId));
-
 
 // --------------------------------- EF Core SQLite (reminders.db)
 var dbPath = builder.Configuration["Storage:DbPath"] ?? "data/reminders.db";
@@ -62,10 +61,10 @@ var remindersCsb = new SqliteConnectionStringBuilder
     Mode = SqliteOpenMode.ReadWriteCreate,
     Cache = SqliteCacheMode.Shared
 };
-builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(remindersCsb.ConnectionString));
+builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite(remindersCsb.ConnectionString));
 
 // --------------------------------- Quartz persistent (SQLite-Microsoft, quartz.db)
-var quartzPath = builder.Configuration["Quartz:DbPath"] ?? "data/quartz.db";
+var quartzPath = builder.Configuration["Storage:QuartzDbPath"] ?? "data/quartz.db";
 if (!Path.IsPathRooted(quartzPath))
     quartzPath = Path.Combine(AppContext.BaseDirectory, quartzPath.Replace('/', Path.DirectorySeparatorChar));
 Directory.CreateDirectory(Path.GetDirectoryName(quartzPath)!);
@@ -79,66 +78,59 @@ var quartzConn = new SqliteConnectionStringBuilder
 
 builder.Services.AddQuartz(q =>
 {
-    // ЯВНО указываем сериализатор System.Text.Json (правильный тип):
     q.Properties["quartz.serializer.type"] =
         "Quartz.Simpl.SystemTextJsonObjectSerializer, Quartz.Serialization.SystemTextJson";
 
     q.Properties["quartz.scheduler.instanceName"] = "QuartzScheduler";
     q.Properties["quartz.scheduler.instanceId"] = "AUTO";
+
     q.Properties["quartz.jobStore.type"] = "Quartz.Impl.AdoJobStore.JobStoreTX, Quartz";
     q.Properties["quartz.jobStore.driverDelegateType"] = "Quartz.Impl.AdoJobStore.SQLiteDelegate, Quartz";
-    q.Properties["quartz.jobStore.useProperties"] = "true";
+    q.Properties["quartz.jobStore.useProperties"] = "false";
     q.Properties["quartz.jobStore.tablePrefix"] = "QRTZ_";
     q.Properties["quartz.jobStore.dataSource"] = "default";
     q.Properties["quartz.dataSource.default.provider"] = "SQLite-Microsoft";
     q.Properties["quartz.dataSource.default.connectionString"] = quartzConn;
+
+    // Мы сами разворачиваем схему — выключаем встроенную проверку
+    q.Properties["quartz.jobStore.performSchemaValidation"] = "false";
 });
 
 builder.Services.AddQuartzHostedService(o => o.WaitForJobsToComplete = true);
 
-// --------------------------------- Доменные сервисы и команды
+// --------------------------------- Доменные сервисы и командный пайплайн
 builder.Services.AddSingleton<IAccessPolicy, AccessPolicy>();
 builder.Services.AddSingleton<IAccessGuard, AccessGuard>();
 builder.Services.AddSingleton<ITelegramSender, TelegramSender>();
+
+// >>> ВОТ ЭТА СТРОКА — ИСПРАВЛЕНИЕ <<<
 builder.Services.AddSingleton<ISchedulingService, SchedulingService>();
 
-builder.Services.AddHostedService<BotUpdatesService>();
-builder.Services.AddCommanding();
 builder.Services.AddSingleton<BotCommandScopesPublisher>();
+builder.Services.AddCommanding(); // твой экстеншен, вместо Scrutor/Scan
+builder.Services.AddHostedService<BotUpdatesService>();
 
-// --------------------------------- Bootstrap + миграции EF
 var host = builder.Build();
 
+// Публикация/верификация команд и лог путей БД + развёртывание схемы Quartz
 using (var scope = host.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
 
-    // Было: await db.Database.MigrateAsync();
-    await db.Database.EnsureCreatedAsync();
-
-    // Гарантируем строку AccessOptions с Id=1
-    if (!await db.AccessOptions.AnyAsync(a => a.Id == 1))
-    {
-        db.AccessOptions.Add(new AccessOptions
-        {
-            Id = 1,
-            WhitelistEnabled = false,
-            UpdatedAt = DateTimeOffset.UtcNow
-        });
-        await db.SaveChangesAsync();
-    }
-
-    // Publish DM and Group command menus globally
     var publisher = scope.ServiceProvider.GetRequiredService<BotCommandScopesPublisher>();
     if (builder.Environment.IsDevelopment())
-    await publisher.RepublishAllAsync(CancellationToken.None);
-else
-    await publisher.VerifyAndFixAsync(CancellationToken.None);
+        await publisher.RepublishAllAsync(CancellationToken.None);
+    else
+        await publisher.VerifyAndFixAsync(CancellationToken.None);
 
     var log = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Program");
     var resolvedPath = new SqliteConnectionStringBuilder(db.Database.GetConnectionString()!).DataSource;
     log.LogInformation("EF Reminders DB: {Path}", resolvedPath);
     log.LogInformation("Quartz DB: {Path}", quartzPath);
+
+    await TgReminderBot.Services.Quartz.QuartzSqliteSchemaBootstrapper
+        .EnsureSqliteSchemaAsync(quartzPath, log, CancellationToken.None);
 }
 
 await host.RunAsync();

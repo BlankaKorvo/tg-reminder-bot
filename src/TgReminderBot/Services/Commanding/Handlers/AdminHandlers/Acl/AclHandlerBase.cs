@@ -4,7 +4,7 @@ using TgReminderBot.Data;
 using TgReminderBot.Models;
 using TgReminderBot.Services.Commanding.Abstractions;
 
-namespace TgReminderBot.Services.Commanding.Handlers.Acl;
+namespace TgReminderBot.Services.Commanding.Handlers.AdminHandlers.Acl;
 
 internal abstract class AclHandlerBase : ICommandHandler, IRequireSuperAdmin
 {
