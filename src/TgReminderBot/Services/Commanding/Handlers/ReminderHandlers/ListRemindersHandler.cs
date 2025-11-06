@@ -31,7 +31,7 @@ internal sealed class ListRemindersHandler : ICommandHandler
     {
         var items = _db.Reminders
             .AsNoTracking()
-            .Where(x => x.ChatId == ctx.ChatId && x.CreatedBy == ctx.UserId)
+            .Where(x => x.ChatId == ctx.ChatId /*&& x.CreatedBy == ctx.UserId*/)
             .AsEnumerable() // SQLite: ORDER BY DateTimeOffset не поддерживается — сортируем в памяти
             .OrderByDescending(x => x.UpdatedAt)
             .Take(10)

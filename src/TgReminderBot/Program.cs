@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Http;
 using Microsoft.Data.Sqlite;
@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Quartz;
+using Serilog;
 using Telegram.Bot;
 using TgReminderBot.Data;
 using TgReminderBot.Models;
@@ -16,19 +17,19 @@ using TgReminderBot.Services.Commanding;
 var builder = Host.CreateApplicationBuilder(args);
 
 // --------------------------------- Логирование
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .CreateLogger();
+
 builder.Logging.ClearProviders();
-builder.Logging.AddSimpleConsole(o =>
-{
-    o.SingleLine = true;
-    o.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff ";
-});
+builder.Logging.AddSerilog();
 
 // --------------------------------- Telegram Bot Client
 builder.Services.AddHttpClient("tg");
 builder.Services.AddSingleton<ITelegramBotClient>(sp =>
 {
-    var token = builder.Configuration["Bot:Token"]
-                ?? Environment.GetEnvironmentVariable("BOT_TOKEN")
+    var token = Environment.GetEnvironmentVariable("BOT_TOKEN") 
+                ?? builder.Configuration["Bot:Token"]
                 ?? throw new InvalidOperationException("Bot:Token/BOT_TOKEN not configured");
 
     var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("tg");
@@ -44,8 +45,8 @@ builder.Services.AddSingleton<BotIdentity>(sp =>
 });
 
 // --------------------------------- Суперадмин (DI)
-var superAdminRaw = builder.Configuration["Bot:SuperAdminId"]
-                   ?? Environment.GetEnvironmentVariable("SUPERADMIN_ID");
+var superAdminRaw = Environment.GetEnvironmentVariable("SUPERADMIN_ID") 
+                   ?? builder.Configuration["Bot:SuperAdminId"];
 long.TryParse(superAdminRaw, out var superAdminId);
 builder.Services.AddSingleton(new SuperAdminConfig(superAdminId));
 

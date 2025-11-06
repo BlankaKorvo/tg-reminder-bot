@@ -1,20 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-  </PropertyGroup>
 
-  <!-- Не тянем файлы из Tools в этот проект -->
-  <ItemGroup>
-    <Compile Remove="Tools\**" />
-    <EmbeddedResource Remove="Tools\**" />
-    <None Remove="Tools\**" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Remove="appsettings.json" />
-  </ItemGroup>
+    <!-- Publishing defaults (override via CLI if desired) -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- IMPORTANT: disable trimming to avoid EF/Quartz/Reflection issues -->
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
@@ -38,32 +35,11 @@
     <PackageReference Include="Quartz.Serialization.SystemTextJson" Version="3.15.1" />
   </ItemGroup>
 
-  <!-- Официальный DDL Quartz: файл ДОЛЖЕН существовать по этому пути -->
   <ItemGroup>
-    <Content Include="appsettings.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="appsettings.*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- Авто-инициализация схемы Quartz на этапе publish -->
-  <Target Name="InitQuartzSchema" AfterTargets="Publish">
-    <PropertyGroup>
-      <QuartzDb>$(PublishDir)data\quartz.db</QuartzDb>
-      <QuartzSql>$(ProjectDir)sql\quartz\tables_sqlite.sql</QuartzSql>
-      <InitProj>$(ProjectDir)..\Tools\QuartzSqliteInit\QuartzSqliteInit.csproj</InitProj>
-    </PropertyGroup>
-    <Message Text="Initializing Quartz schema: $(QuartzDb)" Importance="high" />
-    <Exec Command="dotnet run --no-build --project &quot;$(InitProj)&quot; -- &quot;$(QuartzDb)&quot; &quot;$(QuartzSql)&quot;" />
-  </Target>
-	  <!-- Авто-инициализация схемы Quartz при локальной сборке (Debug) -->
-  <Target Name="InitQuartzSchemaDebug" AfterTargets="Build" Condition="'$(Configuration)'=='Debug'">
-	  <PropertyGroup>
-		<!-- База, с которой работает приложение при F5 -->
-		<QuartzDb>$(TargetDir)data\quartz.db</QuartzDb>
-		<!-- Официальный DDL в репозитории проекта -->
-		<QuartzSql>$(ProjectDir)sql\quartz\tables_sqlite.sql</QuartzSql>
-		<!-- наш маленький CLI-инит -->
-		<InitProj>$(ProjectDir)..\Tools\QuartzSqliteInit\QuartzSqliteInit.csproj</InitProj>
-	  </PropertyGroup>
-  </Target>
+  <!-- No MSBuild Exec targets here on purpose.
+       Quartz schema is initialized at runtime by your bootstrapper. -->
 </Project>

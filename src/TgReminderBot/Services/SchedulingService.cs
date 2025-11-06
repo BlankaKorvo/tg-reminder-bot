@@ -150,7 +150,7 @@ public sealed class SchedulingService : ISchedulingService
                 {
                     data["poll"] = "1";
                     data["pollOptions"] = "Пойду|Возможно|Не смогу";
-                    data["pollQuestion"] = $"Кто пойдет на «{r.Text}»?";
+                    data["pollQuestion"] = $"Кто пойдет на «{r.Text}» в {r.EventAt}?";
                 }
 
                 var key = $"reminder.event:{r.Id}:{off.TotalSeconds:+#;-#;0}s";
